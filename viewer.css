@@ -131,10 +131,10 @@ body {
     flex: 1;
     display: flex;
     justify-content: center;
-    align-items: center;
+    align-items: flex-start;
     position: relative;
     background: #ffffff; /* Fondo blanco */
-    overflow: hidden;
+    overflow: auto; /* Contenedor: Asegúrate de que el padre (#viewer-container) tenga overflow: auto; y que NO tenga un padding que esté empujando el canvas hacia afuera */
 }
 
 /* Contenedor de scroll para el PDF */
@@ -147,6 +147,10 @@ body {
     justify-content: center;
     align-items: center;
     background: #f8f9fa; /* Fondo gris claro para el área de scroll */
+    box-sizing: border-box;
+    /* Contenedor: Asegúrate de que el padre (#viewer-container) tenga overflow: auto; y que NO tenga un padding que esté empujando el canvas hacia afuera */
+    padding: 0; /* Eliminar cualquier padding que pueda empujar el canvas */
+    margin: 0;
 }
 
 .canvas-wrapper {

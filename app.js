@@ -17,10 +17,14 @@ let initialScale = 1.0; // Escala inicial calculada para el ajuste al contenedor
 // Escala Inicial como Base: Valor que será nuestro 100% visual
 let fitToWidthScale = 1.0; // Escala de ajuste al ancho que será la base
 
+// Estado para manejar cambios de orientación y primera carga
+let isFirstLoad = true;
+let lastContainerWidth = 0;
+
 /*
- * Calcula la escala inicial para que el PDF quepa en el ancho del contenedor sin deformarse
+ * Función Unificada de Escala: Obtiene el container.clientWidth en tiempo real
  */
-function calculateInitialScale(viewport) {
+function getFitToWidthScale(viewport) {
     const container = document.querySelector('.pdf-scroll-container');
     if (!container) return 1.0;
     
@@ -31,6 +35,13 @@ function calculateInitialScale(viewport) {
     if (containerWidth === 0 || containerHeight === 0) {
         return 1.0;
     }
+    
+    // Detectar si hubo cambio de orientación o primera carga
+    const isOrientationChange = Math.abs(containerWidth - lastContainerWidth) > 10;
+    const isInitialLoad = isFirstLoad;
+    
+    // Actualizar el ancho del contenedor para la próxima comparación
+    lastContainerWidth = containerWidth;
     
     // Calcular escala para ajustar al contenedor manteniendo la proporción
     const scaleX = containerWidth / viewport.width;
@@ -44,6 +55,14 @@ function calculateInitialScale(viewport) {
     
     // Aplicar un pequeño margen para mejor visualización, pero no demasiado para evitar deformación
     scale = scale * 0.98;
+    
+    // Validación en cada Render: Si es la primera vez o hubo cambio de orientación, fuerza el fitToWidth
+    if (isInitialLoad || isOrientationChange) {
+        console.log('Cambio de orientación o primera carga detectado. Forzando fitToWidth.');
+        isFirstLoad = false;
+        fitToWidthScale = scale;
+        currentScale = fitToWidthScale;
+    }
     
     return scale;
 }
@@ -343,7 +362,7 @@ async function loadPdfFromSupabase() {
         
         // 1. Escala Inicial como Base: Al cargar, calcula el fitToWidthScale (ancho contenedor / ancho PDF)
         // Asigna ese valor a currentScale. Este valor será nuestro 100% visual
-        fitToWidthScale = calculateInitialScale(viewport);
+        fitToWidthScale = getFitToWidthScale(viewport);
         currentScale = fitToWidthScale;
         
         console.log('Escala inicial calculada (Fit to Width):', fitToWidthScale);
@@ -391,7 +410,8 @@ async function renderPage(pageNumber, zoomScale = null) {
         
         const page = await state.pdfDoc.getPage(pageNumber);
         
-        // Render Inicial: La función que carga el PDF desde Supabase debe llamar a renderPage(pdfDoc, 1, currentScale). No uses un valor 'hardcoded' (fijo) de 1.5 o 1.0 dentro de la función; usa siempre la variable global
+        // Consistencia entre Páginas: Asegúrate de que todas las páginas del PDF hereden la misma currentScale
+        // Al cambiar de página, el viewport debe generarse con la escala global guardada, no con una escala interna de la página
         let scale;
         if (zoomScale !== null) {
             // Usar el zoomScale proporcionado (para zoom real)
@@ -404,40 +424,48 @@ async function renderPage(pageNumber, zoomScale = null) {
         // Asegurar que la escala sea razonable
         scale = Math.max(0.1, Math.min(scale, 5.0)); // Entre 0.1x y 5.0x
         
-        // 2. Normalización del Render: La función renderPage debe recibir ÚNICAMENTE el número currentScale
-        // const viewport = page.getViewport({ scale: currentScale * Math.min(window.devicePixelRatio, 2) });
+        // Captura de Dimensiones: Obtén el ancho del contenedor usando getBoundingClientRect().width en lugar de clientWidth para mayor precisión con decimales
+        const container = document.querySelector('.pdf-scroll-container');
+        const containerRect = container.getBoundingClientRect();
+        const containerWidth = containerRect.width;
+        const containerHeight = containerRect.height;
+        
+        // Calcular viewport base
+        const baseViewport = page.getViewport({ scale: scale });
+        
+        // Cálculo de Escala: Define la escala de renderizado multiplicando tu currentScale por window.devicePixelRatio
         const dpr = Math.min(window.devicePixelRatio || 1, 2);
-        const finalScale = scale * dpr;
-        const scaledViewport = page.getViewport({ scale: finalScale });
+        const renderScale = scale * dpr;
+        const renderViewport = page.getViewport({ scale: renderScale });
 
         // Preparar el canvas
         const canvas = elements.canvas;
         const context = canvas.getContext('2d');
         
-        // Limpieza de Renderizado: Asegurarse de que el canvas se limpie y que las dimensiones canvas.width y canvas.height se actualicen antes de llamar al motor de PDF.js
-        canvas.width = Math.floor(scaledViewport.width);
-        canvas.height = Math.floor(scaledViewport.height);
+        // Atributos de Resolución: Configura canvas.width y canvas.height multiplicando el ancho/alto del viewport por window.devicePixelRatio
+        canvas.width = Math.floor(renderViewport.width);
+        canvas.height = Math.floor(renderViewport.height);
         
-        // 5. Refinado de UI: Asegúrate de que el PDF se mantenga centrado en el contenedor si el usuario logra reducirlo
-        // Establecer el tamaño visual del canvas con CSS (sin estiramiento)
-        canvas.style.width = `${scaledViewport.width}px`;
-        canvas.style.height = `${scaledViewport.height}px`;
+        // Estilo Visual (Crítico): Fuerza al canvas a medir exactamente lo que mide el contenedor en la pantalla
+        canvas.style.width = '100%';
+        canvas.style.height = 'auto';
+        canvas.style.display = 'block';
         canvas.style.maxWidth = 'none';
         canvas.style.maxHeight = 'none';
         canvas.style.margin = '0 auto'; // Centrar el canvas en el contenedor
         
-        // Escalar el contexto para renderizar en alta resolución
-        context.scale(dpr, dpr);
+        // Contexto: Aplica context.setTransform(window.devicePixelRatio, 0, 0, window.devicePixelRatio, 0, 0); antes de renderizar para sincronizar los trazos con la nueva densidad
+        context.setTransform(dpr, 0, 0, dpr, 0, 0);
         
         // Limpiar el canvas completamente
-        context.clearRect(0, 0, scaledViewport.width, scaledViewport.height);
+        context.clearRect(0, 0, baseViewport.width, baseViewport.height);
         context.fillStyle = '#ffffff'; // Fondo blanco
-        context.fillRect(0, 0, scaledViewport.width, scaledViewport.height);
+        context.fillRect(0, 0, baseViewport.width, baseViewport.height);
 
         // Renderizar la página
         const renderContext = {
             canvasContext: context,
-            viewport: scaledViewport
+            viewport: baseViewport // Usar el viewport base, no el escalado
         };
         
         // Guardar la tarea de renderizado para poder cancelarla
@@ -554,6 +582,53 @@ function setZoom(scale) {
 // Exponer funciones globalmente
 window.renderPage = renderPage;
 window.setZoom = setZoom;
+
+/*
+ * Evento Resize: Detecta cambios de orientación y fuerza reajuste del PDF
+ */
+let resizeTimeout = null;
+window.addEventListener('resize', function() {
+    // Debounce para evitar múltiples renderizados rápidos
+    if (resizeTimeout) {
+        clearTimeout(resizeTimeout);
+    }
+    
+    resizeTimeout = setTimeout(() => {
+        console.log('Cambio de tamaño detectado. Reajustando PDF...');
+        // Forzar recálculo de la escala de ajuste al ancho
+        if (state.pdfDoc && state.currentPage) {
+            // Obtener la primera página para recalcular la escala base
+            state.pdfDoc.getPage(1).then(page => {
+                const viewport = page.getViewport({ scale: 1 });
+                const newFitToWidthScale = getFitToWidthScale(viewport);
+                
+                // Si la escala base cambió significativamente, ajustar currentScale
+                if (Math.abs(newFitToWidthScale - fitToWidthScale) > 0.01) {
+                    console.log('Escala base cambiada. Ajustando currentScale.');
+                    fitToWidthScale = newFitToWidthScale;
+                    currentScale = fitToWidthScale;
+                    renderPage(state.currentPage, currentScale);
+                }
+            });
+        }
+    }, 200); // 200ms de debounce
+});
+
+/*
+ * Evento de Cambio de Escala del Sistema: Detecta cambios en el devicePixelRatio
+ */
+let lastDevicePixelRatio = window.devicePixelRatio;
+setInterval(() => {
+    if (window.devicePixelRatio !== lastDevicePixelRatio) {
+        console.log('Cambio de devicePixelRatio detectado:', lastDevicePixelRatio, '->', window.devicePixelRatio);
+        lastDevicePixelRatio = window.devicePixelRatio;
+        
+        // Forzar re-renderizado suave para adaptarse al nuevo ratio
+        if (state.pdfDoc && state.currentPage && !state.isRendering) {
+            renderPage(state.currentPage, currentScale);
+        }
+    }
+}, 1000); // Verificar cada segundo
 
 // Inicializar cuando el DOM esté listo
 document.addEventListener('DOMContentLoaded', initApp);
