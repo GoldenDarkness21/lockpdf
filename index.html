@@ -49,33 +49,6 @@
             </div>
         </div>
 
-        <!-- CSS de sincronización de contenedor y canvas -->
-        <style>
-            /* CSS del Contenedor: Permite que el celular maneje el scroll de forma natural */
-            .pdf-scroll-container {
-                width: 100vw;
-                height: 100vh;
-                overflow: auto;
-                -webkit-overflow-scrolling: touch;
-                display: block;
-                background: #f8f9fa;
-                border-radius: 4px;
-                box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-            }
-            
-            /* Reset de Estilos del Canvas: El tamaño debe ser definido únicamente por canvas.width y canvas.height en JavaScript */
-            #pdfCanvas {
-                width: auto !important;
-                height: auto !important;
-                max-width: none !important;
-                max-height: none !important;
-                display: block !important;
-                margin: 0 auto !important;
-                /* Eliminar cualquier estilo que fuerce dimensiones */
-                /* width: 100% y height: 100% están eliminados para que el tamaño sea definido solo por JavaScript */
-            }
-        </style>
-
         <!-- Footer con controles de zoom y navegación -->
         <footer class="app-footer">
             <div class="controls-group">
