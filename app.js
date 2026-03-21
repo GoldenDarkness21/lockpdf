@@ -329,18 +329,34 @@ async function renderPage(pageNumber) {
         
         const scaledViewport = page.getViewport({ scale: scale });
 
-        // Preparar el canvas
+        // Preparar el canvas con soporte High DPI
         const canvas = elements.canvas;
         const context = canvas.getContext('2d');
         
+        // Detectar devicePixelRatio para soporte Retina/High DPI
+        const dpr = window.devicePixelRatio || 1;
+        const maxDPR = 2; // Limitar a 2 para evitar saturación de memoria con PDFs grandes
+        const actualDPR = Math.min(dpr, maxDPR);
+        
         // Asegurar que el canvas tenga el tamaño correcto
-        canvas.height = scaledViewport.height;
-        canvas.width = scaledViewport.width;
+        const canvasWidth = scaledViewport.width;
+        const canvasHeight = scaledViewport.height;
+        
+        // Configurar canvas para High DPI
+        canvas.width = Math.floor(canvasWidth * actualDPR);
+        canvas.height = Math.floor(canvasHeight * actualDPR);
+        
+        // Establecer el tamaño visual del canvas con CSS
+        canvas.style.width = `${canvasWidth}px`;
+        canvas.style.height = `${canvasHeight}px`;
+        
+        // Escalar el contexto para renderizar en alta resolución
+        context.scale(actualDPR, actualDPR);
         
         // Limpiar el canvas completamente
-        context.clearRect(0, 0, canvas.width, canvas.height);
+        context.clearRect(0, 0, canvasWidth, canvasHeight);
         context.fillStyle = '#ffffff'; // Fondo blanco
-        context.fillRect(0, 0, canvas.width, canvas.height);
+        context.fillRect(0, 0, canvasWidth, canvasHeight);
 
         // Renderizar la página con validación
         const renderContext = {
