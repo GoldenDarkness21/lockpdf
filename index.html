@@ -25,25 +25,21 @@
                 </div>
             </div>
             <div class="header-controls">
-                <button class="nav-btn" id="prevPageBtn" title="Página Anterior">
-                    ←
-                </button>
-                <button class="nav-btn" id="nextPageBtn" title="Página Siguiente">
-                    →
-                </button>
-                <button class="fullscreen-btn" id="fullscreenBtn" title="Pantalla Completa">
-                    🖥️
-                </button>
+                <!-- 2. Limpieza de Interfaz: Elimina por completo el HTML y el JS de los botones 'Anterior', 'Siguiente' y el contador de páginas 'X de Y' de la parte superior -->
+                <!-- Deja únicamente los botones de + y - para el zoom -->
             </div>
         </header>
 
         <!-- Contenedor del visor -->
         <div class="viewer-container">
-            <!-- Canvas para renderizar el PDF -->
-            <div class="canvas-wrapper">
-                <canvas id="pdfCanvas"></canvas>
-                <!-- Overlay de seguridad para bloquear selección y arrastre -->
-                <div class="security-overlay" id="securityOverlay"></div>
+            <!-- Contenedor de scroll para el PDF -->
+            <div class="pdf-scroll-container">
+                <!-- Canvas para renderizar el PDF -->
+                <div class="canvas-wrapper">
+                    <canvas id="pdfCanvas"></canvas>
+                    <!-- Overlay de seguridad para bloquear selección y arrastre -->
+                    <div class="security-overlay" id="securityOverlay"></div>
+                </div>
             </div>
             
             <!-- Spinner de carga -->
@@ -53,11 +49,56 @@
             </div>
         </div>
 
-        <!-- Footer con información de página -->
+        <!-- CSS de sincronización de contenedor y canvas -->
+        <style>
+            /* CSS del Contenedor: Permite que el celular maneje el scroll de forma natural */
+            .pdf-scroll-container {
+                width: 100vw;
+                height: 100vh;
+                overflow: auto;
+                -webkit-overflow-scrolling: touch;
+                display: block;
+                background: #f8f9fa;
+                border-radius: 4px;
+                box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            }
+            
+            /* Reset de Estilos del Canvas: El tamaño debe ser definido únicamente por canvas.width y canvas.height en JavaScript */
+            #pdfCanvas {
+                width: auto !important;
+                height: auto !important;
+                max-width: none !important;
+                max-height: none !important;
+                display: block !important;
+                margin: 0 auto !important;
+                /* Eliminar cualquier estilo que fuerce dimensiones */
+                /* width: 100% y height: 100% están eliminados para que el tamaño sea definido solo por JavaScript */
+            }
+        </style>
+
+        <!-- Footer con controles de zoom y navegación -->
         <footer class="app-footer">
-            <div class="page-info">
-                <span id="currentPage">Página 1</span>
-                <span id="totalPages">de 1</span>
+            <div class="controls-group">
+                <!-- Botones de zoom, navegación y pantalla completa juntos -->
+                <div class="zoom-controls">
+                    <button class="fullscreen-btn" id="fullscreenBtn" title="Pantalla Completa">
+                        🖥️
+                    </button>
+                    <span class="controls-separator"></span>
+                    <button class="zoom-btn" id="zoomOutBtn" title="Alejar">
+                        -
+                    </button>
+                    <button class="zoom-btn" id="zoomInBtn" title="Acercar">
+                        +
+                    </button>
+                    <span class="controls-separator"></span>
+                    <button class="nav-btn" id="prevPageBtnBottom" title="Página Anterior">
+                        ←
+                    </button>
+                    <button class="nav-btn" id="nextPageBtnBottom" title="Página Siguiente">
+                        →
+                    </button>
+                </div>
             </div>
         </footer>
     </div>
@@ -68,5 +109,30 @@
         window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
     </script>
     <script src="app.js"></script>
+    
+    <!-- CSS restrictivo para el canvas -->
+    <style>
+        /* Matar el CSS restrictivo: Genera un bloque de CSS que fuerce al #pdf-canvas a tener width: auto !important; height: auto !important; max-width: none !important */
+        #pdfCanvas {
+            width: auto !important;
+            height: auto !important;
+            max-width: none !important;
+            max-height: none !important;
+            display: block !important;
+            margin: 0 auto !important;
+        }
+        
+        /* Contenedor de Scroll Obligatorio: Envuelve el canvas en un div con ID #viewer-container que tenga width: 100%; height: 80vh; overflow: auto; display: block */
+        .pdf-scroll-container {
+            width: 100%;
+            height: 85vh; /* Aumentado de 80vh a 85vh para ocupar el espacio liberado por la navegación superior eliminada */
+            overflow: auto;
+            overflow-x: hidden; /* Evita que el PDF 'baile' hacia los lados si solo queremos scroll vertical al inicio */
+            display: block;
+            background: #f8f9fa;
+            border-radius: 4px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+    </style>
 </body>
 </html>

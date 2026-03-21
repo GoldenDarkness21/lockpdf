@@ -8,13 +8,74 @@ const SUPABASE_CONFIG = {
     pdfUrl: 'https://blukoqkyjlghgihfnsso.supabase.co/storage/v1/object/sign/pdfreview/ReporteFintech.pdf?token=eyJraWQiOiJzdG9yYWdlLXVybC1zaWduaW5nLWtleV9hMjc2NzJhMS0xMjBhLTRlODUtYThmMi01OWNjMWM2ZTc1MzMiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJwZGZyZXZpZXcvUmVwb3J0ZUZpbnRlY2gucGRmIiwiaWF0IjoxNzc0MTAyNzA5LCJleHAiOjE4MDU2Mzg3MDl9.fO7rXJNdmJs7R-O98AHaRxxJB57_znKiWIZzJYPB9bo',
 };
 
+// Hard Reset de la Lógica de Zoom: Variable Única de Verdad
+let currentScale = 1.0; // Escala base 100% - ÚNICA FUENTE DE VERDAD
+
+// Variable para la escala inicial calculada (solo para referencia)
+let initialScale = 1.0; // Escala inicial calculada para el ajuste al contenedor
+
+// Escala Inicial como Base: Valor que será nuestro 100% visual
+let fitToWidthScale = 1.0; // Escala de ajuste al ancho que será la base
+
+// Estado para controlar si es la primera carga o cambio de orientación
+let isFirstLoad = true;
+let lastContainerWidth = 0;
+
+/*
+ * Función Unificada de Escala: Obtiene el container.clientWidth en tiempo real
+ */
+function getFitToWidthScale(viewport) {
+    const container = document.querySelector('.pdf-scroll-container');
+    if (!container) return 1.0;
+    
+    const containerWidth = container.clientWidth;
+    const containerHeight = container.clientHeight;
+    
+    // Validar dimensiones del contenedor
+    if (containerWidth === 0 || containerHeight === 0) {
+        return 1.0;
+    }
+    
+    // Calcular escala para ajustar al contenedor manteniendo la proporción
+    const scaleX = containerWidth / viewport.width;
+    const scaleY = containerHeight / viewport.height;
+    
+    // Usar la escala más pequeña para que quepa completamente sin deformarse
+    let scale = Math.min(scaleX, scaleY);
+    
+    // Asegurar que la escala sea razonable
+    scale = Math.max(0.1, Math.min(scale, 5.0)); // Entre 0.1x y 5.0x
+    
+    // Aplicar un pequeño margen para mejor visualización, pero no demasiado para evitar deformación
+    scale = scale * 0.98;
+    
+    return scale;
+}
+
+/*
+ * Prevenir Saltos: Asegúrate de que el primer clic en + use el valor actual calculado y no un valor por defecto de 1.0
+ */
+function getActualScaleForRendering() {
+    // Zoom Relativo: Los botones + y - deben modificar currentScale
+    return currentScale;
+}
+
+// Valores de Escala
+const DEFAULT_SCALE = 1.0; // Escala base 100%
+
 // Estado interno
 const state = {
     pdfDoc: null,
     currentPage: 1,
     totalPages: 0,
     isLoading: false,
-    renderPageFunction: null
+    renderPageFunction: null,
+    currentScale: currentScale, // Usar la variable global
+    minScale: 0.1, // Bajar el límite mínimo: Cambia el valor de MIN_SCALE para que permita bajar hasta 0.1 (10%)
+    maxScale: 3.0,
+    renderTimeout: null,
+    isRendering: false,
+    currentRenderTask: null
 };
 
 // Elementos del DOM
@@ -26,10 +87,12 @@ const elements = {
     loadingSpinner: document.getElementById('loadingSpinner'),
     prevPageBtn: document.getElementById('prevPageBtn'),
     nextPageBtn: document.getElementById('nextPageBtn'),
+    prevPageBtnBottom: document.getElementById('prevPageBtnBottom'),
+    nextPageBtnBottom: document.getElementById('nextPageBtnBottom'),
     fullscreenBtn: document.getElementById('fullscreenBtn'),
-    currentPageSpan: document.getElementById('currentPage'),
-    totalPagesSpan: document.getElementById('totalPages'),
-    securityOverlay: document.getElementById('securityOverlay')
+    securityOverlay: document.getElementById('securityOverlay'),
+    zoomOutBtn: document.getElementById('zoomOutBtn'),
+    zoomInBtn: document.getElementById('zoomInBtn')
 };
 
 /*
@@ -74,22 +137,9 @@ function setupSecurity() {
  * Configura controles de navegación
  */
 function setupControls() {
-    // Botones del header
-    elements.prevPageBtn.addEventListener('click', async function() {
-        if (state.currentPage > 1) {
-            state.currentPage--;
-            await renderPage(state.currentPage);
-            updatePageInfo();
-        }
-    });
-    
-    elements.nextPageBtn.addEventListener('click', async function() {
-        if (state.currentPage < state.totalPages) {
-            state.currentPage++;
-            await renderPage(state.currentPage);
-            updatePageInfo();
-        }
-    });
+    // Eliminar Navegación Superior: Localiza y elimina (o comenta) el código HTML y JS que genera los botones de 'Anterior' y 'Siguiente' página en la parte superior
+    // Los botones del header han sido eliminados para simplificar la interfaz
+    // El usuario se moverá por el PDF solo mediante scroll
     
     // Navegación con teclado (flechas)
     document.addEventListener('keydown', function(e) {
@@ -115,14 +165,12 @@ function setupControls() {
             if (state.currentPage > 1) {
                 state.currentPage--;
                 renderPage(state.currentPage);
-                updatePageInfo();
             }
         } else if (e.key === 'ArrowRight' || e.key === 'Right') {
             e.preventDefault();
             if (state.currentPage < state.totalPages) {
                 state.currentPage++;
                 renderPage(state.currentPage);
-                updatePageInfo();
             }
         }
     });
@@ -140,6 +188,57 @@ function setupControls() {
     document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
     document.addEventListener('mozfullscreenchange', handleFullscreenChange);
     document.addEventListener('MSFullscreenChange', handleFullscreenChange);
+    
+    // Botones de navegación en el footer
+    if (elements.prevPageBtnBottom) {
+        elements.prevPageBtnBottom.addEventListener('click', async function() {
+            if (state.currentPage > 1) {
+                state.currentPage--;
+                await renderPage(state.currentPage);
+            }
+        });
+    }
+    
+    if (elements.nextPageBtnBottom) {
+        elements.nextPageBtnBottom.addEventListener('click', async function() {
+            if (state.currentPage < state.totalPages) {
+                state.currentPage++;
+                await renderPage(state.currentPage);
+            }
+        });
+    }
+    
+    // 2. Control de Incrementos (Zoom más suave): Cambia los pasos de zoom de 0.5 a 0.2 (o 0.15 si prefieres algo más fino)
+    // 4. Lógica de los Botones: Implementar límites de seguridad
+    if (elements.zoomOutBtn) {
+        elements.zoomOutBtn.addEventListener('click', function() {
+            console.log('Escala antes (zoom out):', currentScale);
+            
+            // 4. Lógica de los Botones: En el botón -, usa: if (currentScale > fitToWidthScale) { currentScale = Math.max(fitToWidthScale, currentScale - 0.2); }
+            if (currentScale > fitToWidthScale) {
+                currentScale = Math.max(fitToWidthScale, currentScale - 0.2);
+            }
+            
+            console.log('Escala después (zoom out):', currentScale);
+            setZoom(currentScale);
+        });
+    }
+    
+    if (elements.zoomInBtn) {
+        elements.zoomInBtn.addEventListener('click', function() {
+            console.log('Escala antes (zoom in):', currentScale);
+            
+            // 4. Lógica de los Botones: En el botón +, usa: if (currentScale < 3.0) { currentScale = Math.min(3.0, currentScale + 0.2); }
+            if (currentScale < 3.0) {
+                currentScale = Math.min(3.0, currentScale + 0.2);
+            }
+            
+            console.log('Escala después (zoom in):', currentScale);
+            setZoom(currentScale);
+        });
+    }
+    
+    // No actualizar display de zoom (se elimina el porcentaje visible)
 }
 
 /*
@@ -184,15 +283,6 @@ function updateLoadingState(isLoading, message = null) {
     }
 }
 
-/*
- * Actualiza la información de página
- */
-function updatePageInfo() {
-    elements.currentPageSpan.textContent = `Página ${state.currentPage}`;
-    elements.totalPagesSpan.textContent = `de ${state.totalPages}`;
-    elements.prevPageBtn.disabled = state.currentPage <= 1;
-    elements.nextPageBtn.disabled = state.currentPage >= state.totalPages;
-}
 
 /*
  * Descarga el PDF con manejo de progreso
@@ -251,8 +341,22 @@ async function loadPdfFromSupabase() {
         state.totalPages = state.pdfDoc.numPages;
         console.log('PDF cargado, total de páginas:', state.totalPages);
         
+        // Cálculo de Escala Inicial: En lugar de currentScale = 1.0, crea una función que calcule la escala necesaria para que el PDF quepa en el ancho del contenedor
+        const firstPage = await state.pdfDoc.getPage(1);
+        const viewport = firstPage.getViewport({ scale: 1 });
+        
+        // 1. Escala Inicial como Base: Al cargar, calcula el fitToWidthScale (ancho contenedor / ancho PDF)
+        // Asigna ese valor a currentScale. Este valor será nuestro 100% visual
+        fitToWidthScale = getFitToWidthScale(viewport);
+        currentScale = fitToWidthScale;
+        isFirstLoad = true;
+        lastContainerWidth = document.querySelector('.pdf-scroll-container')?.clientWidth || 0;
+        
+        console.log('Escala inicial calculada (Fit to Width):', fitToWidthScale);
+        console.log('currentScale asignado (100% visual):', currentScale);
+        console.log('Estado de carga inicial:', { isFirstLoad, lastContainerWidth });
+        
         updateLoadingState(false);
-        updatePageInfo();
         await renderFirstPage();
         
     } catch (error) {
@@ -278,194 +382,163 @@ async function renderFirstPage() {
 /*
  * Renderiza una página específica con marca de agua
  */
-async function renderPage(pageNumber) {
+async function renderPage(pageNumber, zoomScale = null) {
     try {
+        // Cancelar renderizado anterior si está en progreso
+        if (state.currentRenderTask) {
+            try {
+                state.currentRenderTask.cancel();
+            } catch (cancelError) {
+                console.warn('Error al cancelar renderizado anterior:', cancelError);
+            }
+        }
+        
+        // Marcar como en proceso de renderizado
+        state.isRendering = true;
+        
         const page = await state.pdfDoc.getPage(pageNumber);
         
-        // Calcular escala para que el PDF se ajuste al contenedor
-        const container = document.querySelector('.canvas-wrapper');
-        let containerWidth = container.clientWidth;
-        let containerHeight = container.clientHeight;
+        // Validación en cada Render: Verifica si es la primera vez que se carga o si hubo un cambio de orientación
+        const container = document.querySelector('.pdf-scroll-container');
+        const currentContainerWidth = container ? container.clientWidth : 0;
+        const orientationChanged = Math.abs(currentContainerWidth - lastContainerWidth) > 10; // Umbral de 10px
         
-        // Validar dimensiones del contenedor
-        if (containerWidth === 0 || containerHeight === 0) {
-            // Si el contenedor no tiene dimensiones, usar valores por defecto
-            containerWidth = window.innerWidth * 0.8;
-            containerHeight = window.innerHeight * 0.8;
+        // Si es la primera carga o hubo cambio de orientación, fuerza el fitToWidth
+        if (isFirstLoad || orientationChanged) {
+            console.log('Renderizado inicial o cambio de orientación detectado:', { 
+                isFirstLoad, 
+                orientationChanged, 
+                currentContainerWidth, 
+                lastContainerWidth 
+            });
+            
+            // Obtener el viewport con escala 1 para calcular el fitToWidth
+            const baseViewport = page.getViewport({ scale: 1 });
+            fitToWidthScale = getFitToWidthScale(baseViewport);
+            currentScale = fitToWidthScale;
+            isFirstLoad = false;
+            lastContainerWidth = currentContainerWidth;
+            
+            console.log('Escala ajustada por cambio de orientación o carga inicial:', currentScale);
         }
         
-        // Ajustes específicos para móviles
-        const isMobile = window.innerWidth <= 768;
-        if (isMobile) {
-            // En móviles, usar un margen más generoso para mejor visualización
-            containerWidth = containerWidth * 0.95;
-            containerHeight = containerHeight * 0.95;
-        }
-        
-        // Obtener dimensiones del PDF
-        const viewport = page.getViewport({ scale: 1 });
-        const pdfWidth = viewport.width;
-        const pdfHeight = viewport.height;
-        
-        // Verificar si estamos en pantalla completa
-        const isFullscreen = !!document.fullscreenElement || 
-                           !!document.webkitFullscreenElement || 
-                           !!document.mozFullScreenElement || 
-                           !!document.msFullscreenElement;
-        
+        // Render Inicial: La función que carga el PDF desde Supabase debe llamar a renderPage(pdfDoc, 1, currentScale). No uses un valor 'hardcoded' (fijo) de 1.5 o 1.0 dentro de la función; usa siempre la variable global
         let scale;
-        if (isFullscreen && state.fullscreenScale) {
-            // En pantalla completa: usar zoom considerable
-            scale = state.fullscreenScale;
+        if (zoomScale !== null) {
+            // Usar el zoomScale proporcionado (para zoom real)
+            scale = zoomScale;
         } else {
-            // Modo normal: ajustar al contenedor
-            const scaleX = containerWidth / pdfWidth;
-            const scaleY = containerHeight / pdfHeight;
-            scale = Math.min(scaleX, scaleY) * 0.95; // 95% para margen
+            // Consistencia entre Páginas: Asegúrate de que todas las páginas del PDF hereden la misma currentScale
+            // Al cambiar de página, el viewport debe generarse con la escala global guardada, no con una escala interna de la página
+            scale = currentScale;
         }
         
         // Asegurar que la escala sea razonable
         scale = Math.max(0.1, Math.min(scale, 5.0)); // Entre 0.1x y 5.0x
         
-        const scaledViewport = page.getViewport({ scale: scale });
+        // 2. Normalización del Render: La función renderPage debe recibir ÚNICAMENTE el número currentScale
+        // const viewport = page.getViewport({ scale: currentScale * Math.min(window.devicePixelRatio, 2) });
+        const dpr = Math.min(window.devicePixelRatio || 1, 2);
+        const finalScale = scale * dpr;
+        const scaledViewport = page.getViewport({ scale: finalScale });
 
-        // Preparar el canvas con soporte High DPI
+        // Preparar el canvas
         const canvas = elements.canvas;
-        const context = canvas.getContext('2d');
+        // Atributo de Rendimiento: Añade el atributo que pide la consola
+        const context = canvas.getContext('2d', { willReadFrequently: true });
         
-        // Detectar devicePixelRatio para soporte Retina/High DPI
-        const dpr = window.devicePixelRatio || 1;
-        const maxDPR = 2; // Limitar a 2 para evitar saturación de memoria con PDFs grandes
-        const actualDPR = Math.min(dpr, maxDPR);
+        // Cálculo de Escala Real: Para el inicio, usa: const scale = container.clientWidth / page.getViewport({scale: 1}).width;
+        const containerForScale = document.querySelector('.pdf-scroll-container');
+        const baseViewport = page.getViewport({ scale: 1 });
+        let realScale = 1.0;
         
-        // Asegurar que el canvas tenga el tamaño correcto
-        const canvasWidth = scaledViewport.width;
-        const canvasHeight = scaledViewport.height;
+        if (containerForScale && !zoomScale) {
+            // Escala real basada en el ancho del contenedor
+            realScale = containerForScale.clientWidth / baseViewport.width;
+            // Multiplica esa escala por window.devicePixelRatio para la resolución interna
+            const dpr = Math.min(window.devicePixelRatio || 1, 2);
+            realScale = realScale * dpr;
+        } else {
+            realScale = scale;
+        }
         
-        // Configurar canvas para High DPI
-        canvas.width = Math.floor(canvasWidth * actualDPR);
-        canvas.height = Math.floor(canvasHeight * actualDPR);
+        // Limpieza de Renderizado: Asegurarse de que el canvas se limpie y que las dimensiones canvas.width y canvas.height se actualicen antes de llamar al motor de PDF.js
+        canvas.width = Math.floor(scaledViewport.width);
+        canvas.height = Math.floor(scaledViewport.height);
         
-        // Establecer el tamaño visual del canvas con CSS
-        canvas.style.width = `${canvasWidth}px`;
-        canvas.style.height = `${canvasHeight}px`;
+        // 5. Refinado de UI: Asegúrate de que el PDF se mantenga centrado en el contenedor si el usuario logra reducirlo
+        // Establecer el tamaño visual del canvas con CSS (sin estiramiento)
+        // Mantener el tamaño del elemento canvas igual al ancho de la pantalla
+        canvas.style.width = `${baseViewport.width}px`;
+        canvas.style.height = `${scaledViewport.height / (scale * Math.min(window.devicePixelRatio || 1, 2))}px`;
+        canvas.style.maxWidth = 'none';
+        canvas.style.maxHeight = 'none';
+        canvas.style.margin = '0 auto'; // Centrar el canvas en el contenedor
         
         // Escalar el contexto para renderizar en alta resolución
-        context.scale(actualDPR, actualDPR);
+        context.scale(dpr, dpr);
         
         // Limpiar el canvas completamente
-        context.clearRect(0, 0, canvasWidth, canvasHeight);
+        context.clearRect(0, 0, scaledViewport.width, scaledViewport.height);
         context.fillStyle = '#ffffff'; // Fondo blanco
-        context.fillRect(0, 0, canvasWidth, canvasHeight);
+        context.fillRect(0, 0, scaledViewport.width, scaledViewport.height);
 
-        // Renderizar la página con validación
+        // Renderizar la página
         const renderContext = {
             canvasContext: context,
             viewport: scaledViewport
         };
         
-        // Intentar renderizar con reintentos
-        let renderAttempts = 0;
-        const maxAttempts = 5; // Aumentar a 5 intentos para imágenes
+        // Guardar la tarea de renderizado para poder cancelarla
+        state.currentRenderTask = page.render(renderContext);
         
-        while (renderAttempts < maxAttempts) {
-            try {
-                await page.render(renderContext).promise;
-                break; // Si tiene éxito, salir del bucle
-            } catch (renderError) {
-                renderAttempts++;
-                console.warn(`Intento ${renderAttempts} fallido para página ${pageNumber}:`, renderError);
-                
-                if (renderAttempts >= maxAttempts) {
-                    throw renderError;
+        try {
+            await state.currentRenderTask.promise;
+        } catch (renderError) {
+            if (renderError.name === 'RenderingCancelledException') {
+                console.log('Renderizado cancelado por nuevo zoom');
+                return; // Salir silenciosamente si fue cancelado
+            }
+            
+            // Manejo de Errores de Fuente: Si una fuente falla, el PDF sigue renderizando con una fuente de respaldo
+            if (renderError.message && renderError.message.includes('invalid font name')) {
+                console.warn('Error de fuente detectado, intentando con fuente de respaldo:', renderError.message);
+                // Intentar renderizar con una fuente más segura
+                context.font = 'bold 12px Arial, sans-serif';
+                try {
+                    await state.currentRenderTask.promise;
+                } catch (fallbackError) {
+                    console.error('Error al renderizar incluso con fuente de respaldo:', fallbackError);
+                    throw fallbackError;
                 }
-                
-                // Mayor retraso para imágenes
-                await new Promise(resolve => setTimeout(resolve, 200));
+            } else {
+                throw renderError;
             }
         }
         
         // Agregar marca de agua después de renderizar la página
         addWatermarkToCanvas(context, canvas.width, canvas.height);
         
-        console.log(`Página ${pageNumber} renderizada con marca de agua`);
+        console.log(`Página ${pageNumber} renderizada con zoom ${scale} y marca de agua`);
         
-        // Asegurar que el canvas sea visible y centrado
+        // Asegurar que el canvas sea visible
         canvas.style.display = 'block';
-        canvas.style.maxWidth = '100%';
-        canvas.style.maxHeight = '100%';
-        canvas.style.width = 'auto';
-        canvas.style.height = 'auto';
-        canvas.style.margin = '0 auto';
         
-        // Validación específica para pantalla completa
-        if (isFullscreen) {
-            // En pantalla completa, asegurar que el canvas ocupe el espacio disponible
-            canvas.style.width = '100%';
-            canvas.style.height = '100%';
-            canvas.style.maxWidth = 'none';
-            canvas.style.maxHeight = 'none';
-            canvas.style.objectFit = 'contain'; // Mantener proporciones sin distorsión
-        }
+        // No forzar dimensiones fijas, permitir que el contenedor de scroll maneje el desplazamiento
+        canvas.style.margin = '0 auto';
         
         // Forzar actualización del layout
         canvas.offsetHeight; // trigger reflow
         
-        // Validar que el canvas tenga contenido (especialmente importante para imágenes en pantalla completa)
-        const imageData = context.getImageData(0, 0, 10, 10); // Muestra más píxeles para detección de imágenes
-        const hasContent = imageData.data.some(value => value !== 255);
-        
-        if (!hasContent && pageNumber > 1) {
-            console.warn(`Página ${pageNumber} parece estar vacía, intentando re-renderizar...`);
-            
-            // Estrategia 1: Reintentar con escala ligeramente diferente
-            const retryScale = scale * 1.01;
-            const retryViewport = page.getViewport({ scale: retryScale });
-            
-            canvas.height = retryViewport.height;
-            canvas.width = retryViewport.width;
-            context.clearRect(0, 0, canvas.width, canvas.height);
-            context.fillStyle = '#ffffff';
-            context.fillRect(0, 0, canvas.width, canvas.height);
-            
-            const retryRenderContext = {
-                canvasContext: context,
-                viewport: retryViewport
-            };
-            
-            await page.render(retryRenderContext).promise;
-            addWatermarkToCanvas(context, canvas.width, canvas.height);
-            
-            // Validar de nuevo después del re-renderizado
-            const retryImageData = context.getImageData(0, 0, 10, 10);
-            const retryHasContent = retryImageData.data.some(value => value !== 255);
-            
-            if (!retryHasContent && isFullscreen) {
-                console.warn(`Página ${pageNumber} en pantalla completa sigue sin contenido, intentando con escala menor...`);
-                
-                // Estrategia 2: En pantalla completa, intentar con escala menor para imágenes
-                const imageScale = Math.max(0.5, scale * 0.8); // Escala menor para mejor carga de imágenes
-                const imageViewport = page.getViewport({ scale: imageScale });
-                
-                canvas.height = imageViewport.height;
-                canvas.width = imageViewport.width;
-                context.clearRect(0, 0, canvas.width, canvas.height);
-                context.fillStyle = '#ffffff';
-                context.fillRect(0, 0, canvas.width, canvas.height);
-                
-                const imageRenderContext = {
-                    canvasContext: context,
-                    viewport: imageViewport
-                };
-                
-                await page.render(imageRenderContext).promise;
-                addWatermarkToCanvas(context, canvas.width, canvas.height);
-            }
-        }
-        
     } catch (error) {
-        console.error('Error al renderizar página:', error);
-        throw error;
+        if (error.name !== 'RenderingCancelledException') {
+            console.error('Error al renderizar página:', error);
+            throw error;
+        }
+    } finally {
+        // Limpiar estado de renderizado
+        state.isRendering = false;
+        state.currentRenderTask = null;
     }
 }
 
@@ -508,9 +581,86 @@ function addWatermarkToCanvas(context, width, height) {
     context.restore();
 }
 
+/*
+ * Configura el zoom del PDF con debounce
+ */
+function setZoom(scale) {
+    // Detectar si es un dispositivo móvil
+    const isMobile = window.innerWidth <= 768;
+    
+    // Ajustar límites de zoom según el dispositivo
+    const minScale = isMobile ? 0.2 : 0.1; // En móviles, no permitir zoom tan pequeño para mejor usabilidad
+    const maxScale = isMobile ? 2.5 : 3.0; // En móviles, límite de zoom ligeramente menor
+    
+    // Limitar el zoom dentro de los rangos permitidos
+    const newScale = Math.max(minScale, Math.min(scale, maxScale));
+    state.currentScale = newScale;
+    
+    // Ajustar debounce según el dispositivo
+    const debounceTime = isMobile ? 150 : 100; // Más tiempo en móviles para evitar renderizados excesivos
+    
+    // Implementar debounce para evitar múltiples renderizados rápidos
+    if (state.renderTimeout) {
+        clearTimeout(state.renderTimeout);
+    }
+    
+    // Programar el renderizado con un pequeño retraso
+    state.renderTimeout = setTimeout(() => {
+        // Volver a renderizar la página actual con el nuevo zoom
+        if (state.pdfDoc && state.currentPage) {
+            renderPage(state.currentPage, state.currentScale);
+        }
+    }, debounceTime);
+}
+
+
 // Exponer funciones globalmente
 window.renderPage = renderPage;
-window.updatePageInfo = updatePageInfo;
+window.setZoom = setZoom;
 
 // Inicializar cuando el DOM esté listo
 document.addEventListener('DOMContentLoaded', initApp);
+
+/*
+ * Evento Resize: Maneja cambios de orientación del dispositivo
+ */
+let resizeTimeout = null;
+
+window.addEventListener('resize', function() {
+    // Añade un window.addEventListener('resize') con un pequeño debounce para que, 
+    // si el usuario gira el celular (de vertical a horizontal), el PDF se vuelva a ajustar al nuevo ancho automáticamente
+    clearTimeout(resizeTimeout);
+    resizeTimeout = setTimeout(() => {
+        console.log('Cambio de tamaño detectado, recalculando escala...');
+        
+        // Verificar si hay un PDF cargado
+        if (state.pdfDoc && state.currentPage) {
+            // Forzar recálculo de la escala fitToWidth
+            const page = state.pdfDoc.getPage(state.currentPage);
+            page.then(pageObj => {
+                const baseViewport = pageObj.getViewport({ scale: 1 });
+                const newFitToWidthScale = getFitToWidthScale(baseViewport);
+                const currentContainerWidth = document.querySelector('.pdf-scroll-container')?.clientWidth || 0;
+                const orientationChanged = Math.abs(currentContainerWidth - lastContainerWidth) > 10;
+                
+                if (orientationChanged) {
+                    console.log('Cambio de orientación detectado en resize:', { 
+                        newFitToWidthScale, 
+                        currentContainerWidth, 
+                        lastContainerWidth 
+                    });
+                    
+                    // Aplicar la nueva escala fitToWidth
+                    fitToWidthScale = newFitToWidthScale;
+                    currentScale = fitToWidthScale;
+                    lastContainerWidth = currentContainerWidth;
+                    
+                    // Volver a renderizar la página actual con la nueva escala
+                    renderPage(state.currentPage);
+                }
+            }).catch(error => {
+                console.warn('Error al manejar resize:', error);
+            });
+        }
+    }, 200); // Debounce de 200ms
+});

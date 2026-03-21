@@ -137,13 +137,24 @@ body {
     overflow: hidden;
 }
 
-.canvas-wrapper {
-    position: relative;
+/* Contenedor de scroll para el PDF */
+.pdf-scroll-container {
+    flex: 1;
     width: 100%;
     height: 100%;
+    overflow: auto;
     display: flex;
     justify-content: center;
     align-items: center;
+    background: #f8f9fa; /* Fondo gris claro para el área de scroll */
+}
+
+.canvas-wrapper {
+    position: relative;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    /* No forzar dimensiones fijas, permitir que el canvas determine su tamaño */
 }
 
 /* Canvas del PDF */
@@ -201,20 +212,95 @@ body {
     100% { transform: rotate(360deg); }
 }
 
-/* Footer con información de página */
+/* Footer con información de página y controles */
 .app-footer {
     background: #ffffff; /* Fondo blanco */
     border-top: 1px solid #dee2e6; /* Borde gris claro */
-    padding: 0.5rem 2rem;
+    padding: 1rem 2rem;
     display: flex;
-    justify-content: flex-end;
+    flex-direction: column;
+    gap: 1rem;
     color: #6c757d; /* Texto gris secundario */
     font-size: 0.9rem;
+}
+
+/* Controles de página (flechas y número) */
+.page-controls {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 1rem;
 }
 
 .page-info {
     display: flex;
     gap: 0.5rem;
+    background: #f8f9fa;
+    padding: 0.5rem 1rem;
+    border-radius: 4px;
+    border: 1px solid #dee2e6;
+}
+
+/* Controles de zoom */
+.zoom-controls {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    background: #f8f9fa;
+    padding: 0.5rem;
+    border-radius: 4px;
+    border: 1px solid #dee2e6;
+}
+
+/* Separador entre controles de zoom y navegación */
+.controls-separator {
+    width: 1px;
+    height: 24px;
+    background: rgba(0, 0, 0, 0.2);
+    margin: 0 8px;
+}
+
+.zoom-btn {
+    background: #ffffff; /* Fondo blanco */
+    border: 1px solid var(--border-color);
+    color: #333;
+    padding: 0.5rem 0.8rem;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 1.2rem;
+    font-weight: bold;
+    transition: all 0.2s ease;
+    user-select: none;
+    -webkit-user-select: none;
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.zoom-btn:hover {
+    background: #f8f9fa; /* Fondo gris claro */
+    border-color: #adb5bd;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+}
+
+.zoom-btn:active {
+    transform: translateY(0);
+    background: #e9ecef;
+}
+
+.zoom-display {
+    background: #ffffff;
+    border: 1px solid #dee2e6;
+    padding: 0.5rem 1rem;
+    border-radius: 4px;
+    font-weight: bold;
+    color: #333;
+    min-width: 60px;
+    text-align: center;
 }
 
 /* Estilos para pantalla completa */
@@ -338,6 +424,91 @@ body:fullscreen {
     #pdfCanvas {
         image-rendering: -webkit-optimize-contrast;
         image-rendering: crisp-edges;
+    }
+}
+
+/* Mejoras específicas para responsive móvil */
+@media (max-width: 768px) {
+    /* Contenedor de scroll para mejor manejo en móviles */
+    .pdf-scroll-container {
+        height: calc(100vh - 160px); /* Aumentar el espacio para header y footer */
+        overflow: auto;
+        overflow-x: hidden;
+        touch-action: pan-y; /* Permitir scroll vertical, bloquear horizontal */
+        /* Mejorar proporción para evitar deformación */
+        min-height: 40vh;
+    }
+    
+    /* Canvas para mejor manejo en móviles */
+    #pdfCanvas {
+        max-width: 100vw;
+        max-height: calc(100vh - 160px);
+        width: 100%;
+        height: auto;
+        /* Mejorar calidad en móviles */
+        image-rendering: -webkit-optimize-contrast;
+        image-rendering: crisp-edges;
+        image-rendering: pixelated;
+        /* Evitar que el canvas se salga del contenedor */
+        box-sizing: border-box;
+        /* Asegurar que el canvas mantenga su proporción */
+        object-fit: contain;
+    }
+    
+    /* Controles de zoom y navegación para móviles */
+    .zoom-controls {
+        flex-wrap: wrap; /* Permitir que los botones se ajusten en pantallas pequeñas */
+        gap: 0.3rem; /* Reducir espacio entre botones */
+        padding: 0.3rem 0.5rem;
+    }
+    
+    /* Ocultar botones de zoom en móviles */
+    .zoom-btn {
+        display: none;
+    }
+    
+    /* Mostrar solo botones de navegación y pantalla completa en móviles */
+    .fullscreen-btn, .nav-btn {
+        padding: 0.4rem 0.6rem; /* Botones más pequeños para móviles */
+        font-size: 1.1rem;
+        width: 35px;
+        height: 35px;
+        min-width: 35px;
+    }
+    
+    .controls-separator {
+        height: 20px;
+        margin: 0 6px;
+    }
+    
+    /* Ajustes para pantallas muy pequeñas */
+    @media (max-width: 480px) {
+        .pdf-scroll-container {
+            height: calc(100vh - 180px); /* Más espacio en pantallas muy pequeñas */
+            min-height: 35vh;
+        }
+        
+        #pdfCanvas {
+            max-height: calc(100vh - 180px);
+        }
+        
+        .zoom-controls {
+            justify-content: center;
+            gap: 0.2rem;
+        }
+        
+        .fullscreen-btn, .nav-btn {
+            padding: 0.3rem 0.5rem;
+            font-size: 1.0rem;
+            width: 32px;
+            height: 32px;
+            min-width: 32px;
+        }
+        
+        .controls-separator {
+            height: 18px;
+            margin: 0 4px;
+        }
     }
 }
 
