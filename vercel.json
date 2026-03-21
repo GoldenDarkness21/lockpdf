@@ -4,9 +4,29 @@
     {
       "src": "index.html",
       "use": "@vercel/static"
+    },
+    {
+      "src": "app.js",
+      "use": "@vercel/static"
+    },
+    {
+      "src": "viewer.css",
+      "use": "@vercel/static"
     }
   ],
   "routes": [
+    {
+      "src": "/",
+      "dest": "/index.html"
+    },
+    {
+      "src": "/app.js",
+      "dest": "/app.js"
+    },
+    {
+      "src": "/viewer.css",
+      "dest": "/viewer.css"
+    },
     {
       "src": "/(.*)",
       "dest": "/index.html"
@@ -14,7 +34,7 @@
   ],
   "headers": [
     {
-      "source": "/(.*)",
+      "source": "/index.html",
       "headers": [
         {
           "key": "Content-Type",
