@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Visualizador PDF Seguro - Supabase</title>
+    <link rel="stylesheet" href="viewer.css">
+    <!-- PDF.js via CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+</head>
+<body>
+    <!-- Contenedor principal -->
+    <div class="app-container">
+        <!-- Header con controles -->
+        <header class="app-header">
+            <div class="header-left">
+                <h1>Visualizador PDF</h1>
+                <div class="status-indicator" id="statusIndicator">
+                    <span class="status-dot"></span>
+                    <span class="status-text">Cargando...</span>
+                </div>
+            </div>
+            <div class="header-controls">
+                <button class="nav-btn" id="prevPageBtn" title="Página Anterior">
+                    ←
+                </button>
+                <button class="nav-btn" id="nextPageBtn" title="Página Siguiente">
+                    →
+                </button>
+                <button class="fullscreen-btn" id="fullscreenBtn" title="Pantalla Completa">
+                    🖥️
+                </button>
+            </div>
+        </header>
+
+        <!-- Contenedor del visor -->
+        <div class="viewer-container">
+            <!-- Canvas para renderizar el PDF -->
+            <div class="canvas-wrapper">
+                <canvas id="pdfCanvas"></canvas>
+                <!-- Overlay de seguridad para bloquear selección y arrastre -->
+                <div class="security-overlay" id="securityOverlay"></div>
+            </div>
+            
+            <!-- Spinner de carga -->
+            <div class="loading-spinner" id="loadingSpinner">
+                <div class="spinner"></div>
+                <p>Cargando documento...</p>
+            </div>
+        </div>
+
+        <!-- Footer con información de página -->
+        <footer class="app-footer">
+            <div class="page-info">
+                <span id="currentPage">Página 1</span>
+                <span id="totalPages">de 1</span>
+            </div>
+        </footer>
+    </div>
+
+    <!-- Scripts -->
+    <script>
+        // Configuración global de PDF.js
+        window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    </script>
+    <script type="module" src="app.js"></script>
+</body>
+</html>
