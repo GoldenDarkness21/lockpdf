@@ -424,7 +424,7 @@ async function renderPage(pageNumber, zoomScale = null) {
         // Asegurar que la escala sea razonable
         scale = Math.max(0.1, Math.min(scale, 5.0)); // Entre 0.1x y 5.0x
         
-        // Captura de Dimensiones: Obtén el ancho del contenedor usando getBoundingClientRect().width en lugar de clientWidth para mayor precisión con decimales
+        // Capturar dimensiones reales del contenedor con precisión milimétrica
         const container = document.querySelector('.pdf-scroll-container');
         const containerRect = container.getBoundingClientRect();
         const containerWidth = containerRect.width;
@@ -432,40 +432,81 @@ async function renderPage(pageNumber, zoomScale = null) {
         
         // Calcular viewport base
         const baseViewport = page.getViewport({ scale: scale });
-        
-        // Cálculo de Escala: Define la escala de renderizado multiplicando tu currentScale por window.devicePixelRatio
         const dpr = Math.min(window.devicePixelRatio || 1, 2);
-        const renderScale = scale * dpr;
-        const renderViewport = page.getViewport({ scale: renderScale });
+        
+        // Cálculo dinámico de escala según el tamaño de pantalla y resolución
+        // Determinar el tipo de dispositivo basado en el ancho del contenedor y la resolución
+        let dynamicScale = scale;
+        const screenWidth = window.innerWidth || document.documentElement.clientWidth || document.body.clientWidth;
+        const screenHeight = window.innerHeight || document.documentElement.clientHeight || document.body.clientHeight;
+        const devicePixelRatio = window.devicePixelRatio || 1;
+        
+        // Calcular densidad de píxeles para ajustar la escala
+        const pixelDensity = devicePixelRatio;
+        const screenArea = screenWidth * screenHeight;
+        const resolutionFactor = Math.min(1.2, screenArea / (1920 * 1080)); // Factor basado en resolución, ligeramente aumentado
+        
+        if (screenWidth <= 480) {
+            // Móviles pequeños: Escala más grande considerando resolución alta
+            dynamicScale = Math.min(scale, 0.7) * resolutionFactor * (1.0 / Math.sqrt(Math.max(1.0, pixelDensity - 0.5)));
+        } else if (screenWidth <= 768) {
+            // Móviles grandes y tablets: Escala más grande considerando resolución
+            dynamicScale = Math.min(scale, 0.9) * resolutionFactor;
+        } else if (screenWidth <= 1024) {
+            // Tablets grandes y laptops pequeñas: Escala más grande considerando resolución
+            dynamicScale = Math.min(scale, 1.1) * resolutionFactor;
+        } else {
+            // Desktops: Escala más grande pero ajustada por resolución
+            dynamicScale = Math.min(scale, 1.3) * resolutionFactor;
+        }
+        
+        // Ajuste dinámico basado en proporción del contenedor y resolución
+        const aspectRatio = containerWidth / containerHeight;
+        const pdfAspectRatio = baseViewport.width / baseViewport.height;
+        const containerArea = containerWidth * containerHeight;
+        const viewportArea = baseViewport.width * baseViewport.height;
+        const areaRatio = containerArea / viewportArea;
+        
+        // Si el contenedor es más estrecho que el PDF o tiene alta resolución, reducir ligeramente la escala
+        if (aspectRatio < pdfAspectRatio * 0.8 || pixelDensity > 2.5) {
+            dynamicScale = dynamicScale * 0.9; // Reducido ligeramente para alta resolución
+        } else if (areaRatio < 0.7) {
+            dynamicScale = dynamicScale * 0.95; // Reducido muy ligeramente si el área es pequeña
+        }
+        
+        // Calcular escala de ajuste para evitar cortes, considerando resolución
+        const scaleX = containerWidth / baseViewport.width;
+        const scaleY = containerHeight / baseViewport.height;
+        const fitScale = Math.min(scaleX, scaleY) * 0.95; // Margen más pequeño para permitir más zoom
+        
+        // Escala final: Usar la menor entre la escala dinámica y la escala de ajuste, con factor de resolución más favorable
+        const resolutionScale = Math.max(0.8, 1.0 / Math.sqrt(Math.max(1.0, pixelDensity - 0.3))); // Factor de resolución más favorable
+        const finalScale = Math.min(dynamicScale, fitScale) * resolutionScale * 1.05; // Ligeramente aumentado
+        const finalViewport = page.getViewport({ scale: finalScale });
 
         // Preparar el canvas
         const canvas = elements.canvas;
         const context = canvas.getContext('2d');
         
-        // Atributos de Resolución: Configura canvas.width y canvas.height multiplicando el ancho/alto del viewport por window.devicePixelRatio
-        canvas.width = Math.floor(renderViewport.width);
-        canvas.height = Math.floor(renderViewport.height);
+        // Resolución Interna: Configura canvas.width y canvas.height multiplicando el ancho/alto del viewport por window.devicePixelRatio
+        const bufferWidth = Math.floor(finalViewport.width * dpr);
+        const bufferHeight = Math.floor(finalViewport.height * dpr);
         
-        // Estilo Visual (Crítico): Fuerza al canvas a medir exactamente lo que mide el contenedor en la pantalla
-        canvas.style.width = '100%';
-        canvas.style.height = 'auto';
-        canvas.style.display = 'block';
-        canvas.style.maxWidth = 'none';
-        canvas.style.maxHeight = 'none';
-        canvas.style.margin = '0 auto'; // Centrar el canvas en el contenedor
+        canvas.width = bufferWidth;
+        canvas.height = bufferHeight;
         
-        // Contexto: Aplica context.setTransform(window.devicePixelRatio, 0, 0, window.devicePixelRatio, 0, 0); antes de renderizar para sincronizar los trazos con la nueva densidad
-        context.setTransform(dpr, 0, 0, dpr, 0, 0);
+        // Contexto: Asegúrate de usar context.scale(window.devicePixelRatio, window.devicePixelRatio); justo antes del page.render() para que el dibujo se ajuste a la resolución aumentada
+        context.scale(dpr, dpr);
         
         // Limpiar el canvas completamente
-        context.clearRect(0, 0, baseViewport.width, baseViewport.height);
+        context.clearRect(0, 0, finalViewport.width, finalViewport.height);
         context.fillStyle = '#ffffff'; // Fondo blanco
-        context.fillRect(0, 0, baseViewport.width, baseViewport.height);
+        context.fillRect(0, 0, finalViewport.width, finalViewport.height);
 
         // Renderizar la página
         const renderContext = {
             canvasContext: context,
-            viewport: baseViewport // Usar el viewport base, no el escalado
+            viewport: finalViewport // Usar el viewport final, no el escalado
         };
         
         // Guardar la tarea de renderizado para poder cancelarla
@@ -482,9 +523,9 @@ async function renderPage(pageNumber, zoomScale = null) {
         }
         
         // Agregar marca de agua después de renderizar la página
-        addWatermarkToCanvas(context, canvas.width, canvas.height);
+        addWatermarkToCanvas(context, bufferWidth, bufferHeight);
         
-        console.log(`Página ${pageNumber} renderizada con zoom ${scale} y marca de agua`);
+        console.log(`Página ${pageNumber} renderizada con zoom ${scale} (ajustado dinámicamente a ${finalScale}) y marca de agua`);
         
         // Asegurar que el canvas sea visible
         canvas.style.display = 'block';
