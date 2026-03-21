@@ -74,6 +74,7 @@ function setupSecurity() {
  * Configura controles de navegación
  */
 function setupControls() {
+    // Botones del header
     elements.prevPageBtn.addEventListener('click', async function() {
         if (state.currentPage > 1) {
             state.currentPage--;
@@ -87,6 +88,42 @@ function setupControls() {
             state.currentPage++;
             await renderPage(state.currentPage);
             updatePageInfo();
+        }
+    });
+    
+    // Navegación con teclado (flechas)
+    document.addEventListener('keydown', function(e) {
+        // Bloquear teclas de seguridad (mantener existente)
+        if ((e.ctrlKey || e.metaKey) && e.key === 'p') {
+            e.preventDefault();
+            alert('La impresión está deshabilitada.');
+        }
+        
+        if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+            e.preventDefault();
+            alert('La descarga está deshabilitada.');
+        }
+        
+        if ((e.ctrlKey || e.metaKey) && e.key === 'u') {
+            e.preventDefault();
+            alert('Acceso al código fuente deshabilitado.');
+        }
+        
+        // Navegación con flechas
+        if (e.key === 'ArrowLeft' || e.key === 'Left') {
+            e.preventDefault();
+            if (state.currentPage > 1) {
+                state.currentPage--;
+                renderPage(state.currentPage);
+                updatePageInfo();
+            }
+        } else if (e.key === 'ArrowRight' || e.key === 'Right') {
+            e.preventDefault();
+            if (state.currentPage < state.totalPages) {
+                state.currentPage++;
+                renderPage(state.currentPage);
+                updatePageInfo();
+            }
         }
     });
     
@@ -257,6 +294,14 @@ async function renderPage(pageNumber) {
             containerHeight = window.innerHeight * 0.8;
         }
         
+        // Ajustes específicos para móviles
+        const isMobile = window.innerWidth <= 768;
+        if (isMobile) {
+            // En móviles, usar un margen más generoso para mejor visualización
+            containerWidth = containerWidth * 0.95;
+            containerHeight = containerHeight * 0.95;
+        }
+        
         // Obtener dimensiones del PDF
         const viewport = page.getViewport({ scale: 1 });
         const pdfWidth = viewport.width;
@@ -414,7 +459,19 @@ async function renderPage(pageNumber) {
 function addWatermarkToCanvas(context, width, height) {
     // Configuración de la marca de agua
     const watermarkText = 'DRAFT - FOR INTERNAL REVIEW - ACH';
-    const fontSize = Math.max(40, Math.floor(width / 15)); // Tamaño proporcional al ancho
+    
+    // Ajustar tamaño de fuente según el dispositivo
+    const isMobile = window.innerWidth <= 768;
+    let fontSize;
+    
+    if (isMobile) {
+        // En móviles, usar un tamaño más pequeño para no tapar el contenido
+        fontSize = Math.max(20, Math.floor(width / 25));
+    } else {
+        // En desktop, tamaño más grande para mejor visibilidad
+        fontSize = Math.max(40, Math.floor(width / 15));
+    }
+    
     const color = 'rgba(128, 128, 128, 0.3)'; // Gris semitransparente
     
     // Configurar fuente
