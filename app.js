@@ -585,53 +585,60 @@ setInterval(() => {
     }
 }, 1000); // Verificar cada segundo
 
-// Implementar Pinch-to-Zoom (JS)
+// Implementar Pinch-to-Zoom Optimizado (JS)
 function setupPinchToZoom() {
     const scrollContainer = document.querySelector('.pdf-scroll-container');
-    if (!scrollContainer) return;
+    const canvas = document.getElementById('pdfCanvas');
+    if (!scrollContainer || !canvas) return;
 
     let initialDistance = 0;
     let lastScale = currentScale;
     let isPinching = false;
-    
-    // Debounce para evitar saturación del renderizado
-    let zoomTimeout;
+    let visualScale = 1.0;
     
     scrollContainer.addEventListener('touchstart', function(e) {
         if (e.touches.length === 2) {
             isPinching = true;
             initialDistance = getDistance(e.touches[0], e.touches[1]);
             lastScale = currentScale;
+            
+            // Preparamos el canvas para hacer zoom con CSS puro (sin redibujar)
+            canvas.style.transformOrigin = 'center center';
+            canvas.style.transition = 'none'; 
         }
     }, { passive: false });
 
     scrollContainer.addEventListener('touchmove', function(e) {
         if (isPinching && e.touches.length === 2) {
-            e.preventDefault(); // Prevenir scroll durante pinch
+            e.preventDefault(); // Evita el scroll nativo
             
             const currentDistance = getDistance(e.touches[0], e.touches[1]);
-            const scale = currentDistance / initialDistance;
+            visualScale = currentDistance / initialDistance;
             
-            // Aplicar factor de escala con límites
-            const newScale = Math.max(0.2, Math.min(lastScale * scale, 3.0));
+            // Limitamos un poco el zoom visual exagerado
+            if (lastScale * visualScale > 4.0) visualScale = 4.0 / lastScale;
+            if (lastScale * visualScale < 0.1) visualScale = 0.1 / lastScale;
             
-            // Limpiar timeout anterior
-            if (zoomTimeout) {
-                clearTimeout(zoomTimeout);
-            }
-            
-            // Actualizar escala con debounce muy leve (16ms para 60fps)
-            zoomTimeout = setTimeout(() => {
-                currentScale = newScale;
-                setZoom(currentScale);
-            }, 16);
+            // Hacemos el zoom con CSS (60fps, no consume RAM)
+            canvas.style.transform = 'scale(' + visualScale + ')';
         }
     }, { passive: false });
 
-    scrollContainer.addEventListener('touchend', function() {
-        isPinching = false;
-        if (zoomTimeout) {
-            clearTimeout(zoomTimeout);
+    scrollContainer.addEventListener('touchend', function(e) {
+        if (isPinching && e.touches.length < 2) {
+            isPinching = false;
+            
+            // Calculamos la escala final real
+            const finalScale = Math.max(0.2, Math.min(lastScale * visualScale, 3.0));
+            
+            // Quitamos el zoom falso de CSS
+            canvas.style.transform = 'none';
+            
+            // Actualizamos la variable global y disparamos UN SOLO renderizado de alta calidad
+            currentScale = finalScale;
+            setZoom(currentScale);
+            
+            visualScale = 1.0;
         }
     });
 }
