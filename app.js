@@ -43,18 +43,19 @@ function getFitToWidthScale(viewport) {
     // Actualizar el ancho del contenedor para la próxima comparación
     lastContainerWidth = containerWidth;
     
+    // Matemática de Seguridad: Restar píxeles fijos al área disponible antes de dividir
+    const safeWidth = containerWidth - 40;
+    const safeHeight = containerHeight - 40;
+    
     // Calcular escala para ajustar al contenedor manteniendo la proporción
-    const scaleX = containerWidth / viewport.width;
-    const scaleY = containerHeight / viewport.height;
+    const scaleX = safeWidth / viewport.width;
+    const scaleY = safeHeight / viewport.height;
     
     // Usar la escala más pequeña para que quepa completamente sin deformarse
     let scale = Math.min(scaleX, scaleY);
     
     // Asegurar que la escala sea razonable
     scale = Math.max(0.1, Math.min(scale, 5.0)); // Entre 0.1x y 5.0x
-    
-    // Aplicar un pequeño margen para mejor visualización, pero no demasiado para evitar deformación
-    scale = scale * 0.98;
     
     // Validación en cada Render: Si es la primera vez o hubo cambio de orientación, fuerza el fitToWidth
     if (isInitialLoad || isOrientationChange) {
@@ -73,6 +74,21 @@ function getFitToWidthScale(viewport) {
 function getActualScaleForRendering() {
     // Zoom Relativo: Los botones + y - deben modificar currentScale
     return currentScale;
+}
+
+/*
+ * Función de Debounce para Resize: Evita múltiples renderizados rápidos
+ */
+function debounce(func, wait) {
+    let timeout;
+    return function executedFunction(...args) {
+        const later = () => {
+            clearTimeout(timeout);
+            func(...args);
+        };
+        clearTimeout(timeout);
+        timeout = setTimeout(later, wait);
+    };
 }
 
 // Valores de Escala
@@ -229,10 +245,8 @@ function setupControls() {
         elements.zoomOutBtn.addEventListener('click', function() {
             console.log('Escala antes (zoom out):', currentScale);
             
-            // 4. Lógica de los Botones: En el botón -, usa: if (currentScale > fitToWidthScale) { currentScale = Math.max(fitToWidthScale, currentScale - 0.2); }
-            if (currentScale > fitToWidthScale) {
-                currentScale = Math.max(fitToWidthScale, currentScale - 0.2);
-            }
+            // Variable de Estado Limpia: Actualizar currentScale de forma aritmética
+            currentScale = Math.max(fitToWidthScale, currentScale - 0.2);
             
             console.log('Escala después (zoom out):', currentScale);
             setZoom(currentScale);
@@ -243,10 +257,8 @@ function setupControls() {
         elements.zoomInBtn.addEventListener('click', function() {
             console.log('Escala antes (zoom in):', currentScale);
             
-            // 4. Lógica de los Botones: En el botón +, usa: if (currentScale < 3.0) { currentScale = Math.min(3.0, currentScale + 0.2); }
-            if (currentScale < 3.0) {
-                currentScale = Math.min(3.0, currentScale + 0.2);
-            }
+            // Variable de Estado Limpia: Actualizar currentScale de forma aritmética
+            currentScale = Math.min(3.0, currentScale + 0.2);
             
             console.log('Escala después (zoom in):', currentScale);
             setZoom(currentScale);
@@ -359,17 +371,13 @@ async function loadPdfFromSupabase() {
         // Cálculo de Escala Inicial: En lugar de currentScale = 1.0, crea una función que calcule la escala necesaria para que el PDF quepa en el ancho del contenedor
         const firstPage = await state.pdfDoc.getPage(1);
         const viewport = firstPage.getViewport({ scale: 1 });
-        
-        // 1. Escala Inicial como Base: Al cargar, calcula el fitToWidthScale (ancho contenedor / ancho PDF)
-        // Asigna ese valor a currentScale. Este valor será nuestro 100% visual
+
         fitToWidthScale = getFitToWidthScale(viewport);
-        currentScale = fitToWidthScale;
-        
-        console.log('Escala inicial calculada (Fit to Width):', fitToWidthScale);
-        console.log('currentScale asignado (100% visual):', currentScale);
-        
+        currentScale = fitToWidthScale; 
+
         updateLoadingState(false);
-        await renderFirstPage();
+        // No llames a renderFirstPage, llama directo a renderPage
+        await renderPage(1, fitToWidthScale);
         
     } catch (error) {
         console.error('Error al cargar el PDF:', error);
@@ -395,156 +403,53 @@ async function renderFirstPage() {
  * Renderiza una página específica con marca de agua
  */
 async function renderPage(pageNumber, zoomScale = null) {
-    try {
-        // Cancelar renderizado anterior si está en progreso
-        if (state.currentRenderTask) {
-            try {
-                state.currentRenderTask.cancel();
-            } catch (cancelError) {
-                console.warn('Error al cancelar renderizado anterior:', cancelError);
-            }
+    // 1. CANCELACIÓN AGRESIVA: Si hay algo renderizando, lo matamos primero
+    if (state.currentRenderTask) {
+        try {
+            await state.currentRenderTask.cancel();
+        } catch (e) {
+            // Ignoramos el error de cancelación
         }
-        
-        // Marcar como en proceso de renderizado
-        state.isRendering = true;
-        
+        state.currentRenderTask = null;
+    }
+
+    try {
         const page = await state.pdfDoc.getPage(pageNumber);
         
-        // Consistencia entre Páginas: Asegúrate de que todas las páginas del PDF hereden la misma currentScale
-        // Al cambiar de página, el viewport debe generarse con la escala global guardada, no con una escala interna de la página
-        let scale;
-        if (zoomScale !== null) {
-            // Usar el zoomScale proporcionado (para zoom real)
-            scale = zoomScale;
-        } else {
-            // Modo normal: usar la variable global currentScale
-            scale = currentScale;
-        }
-        
-        // Asegurar que la escala sea razonable
-        scale = Math.max(0.1, Math.min(scale, 5.0)); // Entre 0.1x y 5.0x
-        
-        // Capturar dimensiones reales del contenedor con precisión milimétrica
-        const container = document.querySelector('.pdf-scroll-container');
-        const containerRect = container.getBoundingClientRect();
-        const containerWidth = containerRect.width;
-        const containerHeight = containerRect.height;
-        
-        // Calcular viewport base
-        const baseViewport = page.getViewport({ scale: scale });
+        // Usamos el zoom manual si existe, sino el de ajuste
+        const scale = zoomScale || currentScale; 
+        currentScale = scale;
+
+        const viewport = page.getViewport({ scale: scale });
         const dpr = Math.min(window.devicePixelRatio || 1, 2);
         
-        // Cálculo dinámico de escala según el tamaño de pantalla y resolución
-        // Determinar el tipo de dispositivo basado en el ancho del contenedor y la resolución
-        let dynamicScale = scale;
-        const screenWidth = window.innerWidth || document.documentElement.clientWidth || document.body.clientWidth;
-        const screenHeight = window.innerHeight || document.documentElement.clientHeight || document.body.clientHeight;
-        const devicePixelRatio = window.devicePixelRatio || 1;
-        
-        // Calcular densidad de píxeles para ajustar la escala
-        const pixelDensity = devicePixelRatio;
-        const screenArea = screenWidth * screenHeight;
-        const resolutionFactor = Math.min(1.2, screenArea / (1920 * 1080)); // Factor basado en resolución, ligeramente aumentado
-        
-        if (screenWidth <= 480) {
-            // Móviles pequeños: Escala más grande considerando resolución alta
-            dynamicScale = Math.min(scale, 0.7) * resolutionFactor * (1.0 / Math.sqrt(Math.max(1.0, pixelDensity - 0.5)));
-        } else if (screenWidth <= 768) {
-            // Móviles grandes y tablets: Escala más grande considerando resolución
-            dynamicScale = Math.min(scale, 0.9) * resolutionFactor;
-        } else if (screenWidth <= 1024) {
-            // Tablets grandes y laptops pequeñas: Escala más grande considerando resolución
-            dynamicScale = Math.min(scale, 1.1) * resolutionFactor;
-        } else {
-            // Desktops: Escala más grande pero ajustada por resolución
-            dynamicScale = Math.min(scale, 1.3) * resolutionFactor;
-        }
-        
-        // Ajuste dinámico basado en proporción del contenedor y resolución
-        const aspectRatio = containerWidth / containerHeight;
-        const pdfAspectRatio = baseViewport.width / baseViewport.height;
-        const containerArea = containerWidth * containerHeight;
-        const viewportArea = baseViewport.width * baseViewport.height;
-        const areaRatio = containerArea / viewportArea;
-        
-        // Si el contenedor es más estrecho que el PDF o tiene alta resolución, reducir ligeramente la escala
-        if (aspectRatio < pdfAspectRatio * 0.8 || pixelDensity > 2.5) {
-            dynamicScale = dynamicScale * 0.9; // Reducido ligeramente para alta resolución
-        } else if (areaRatio < 0.7) {
-            dynamicScale = dynamicScale * 0.95; // Reducido muy ligeramente si el área es pequeña
-        }
-        
-        // Calcular escala de ajuste para evitar cortes, considerando resolución
-        const scaleX = containerWidth / baseViewport.width;
-        const scaleY = containerHeight / baseViewport.height;
-        const fitScale = Math.min(scaleX, scaleY) * 0.95; // Margen más pequeño para permitir más zoom
-        
-        // Escala final: Usar la menor entre la escala dinámica y la escala de ajuste, con factor de resolución más favorable
-        const resolutionScale = Math.max(0.8, 1.0 / Math.sqrt(Math.max(1.0, pixelDensity - 0.3))); // Factor de resolución más favorable
-        const finalScale = Math.min(dynamicScale, fitScale) * resolutionScale * 1.05; // Ligeramente aumentado
-        const finalViewport = page.getViewport({ scale: finalScale });
-
-        // Preparar el canvas
         const canvas = elements.canvas;
         const context = canvas.getContext('2d');
         
-        // Resolución Interna: Configura canvas.width y canvas.height multiplicando el ancho/alto del viewport por window.devicePixelRatio
-        const bufferWidth = Math.floor(finalViewport.width * dpr);
-        const bufferHeight = Math.floor(finalViewport.height * dpr);
+        // Ajustamos el tamaño interno (buffer)
+        canvas.width = Math.floor(viewport.width * dpr);
+        canvas.height = Math.floor(viewport.height * dpr);
         
-        canvas.width = bufferWidth;
-        canvas.height = bufferHeight;
+        // Ajustamos el tamaño visual (CSS)
+        canvas.style.width = viewport.width + 'px';
+        canvas.style.height = viewport.height + 'px';
         
-        // Contexto: Asegúrate de usar context.scale(window.devicePixelRatio, window.devicePixelRatio); justo antes del page.render() para que el dibujo se ajuste a la resolución aumentada
         context.scale(dpr, dpr);
         
-        // Limpiar el canvas completamente
-        context.clearRect(0, 0, finalViewport.width, finalViewport.height);
-        context.fillStyle = '#ffffff'; // Fondo blanco
-        context.fillRect(0, 0, finalViewport.width, finalViewport.height);
-
-        // Renderizar la página
         const renderContext = {
             canvasContext: context,
-            viewport: finalViewport // Usar el viewport final, no el escalado
+            viewport: viewport
         };
         
-        // Guardar la tarea de renderizado para poder cancelarla
         state.currentRenderTask = page.render(renderContext);
+        await state.currentRenderTask.promise;
         
-        try {
-            await state.currentRenderTask.promise;
-        } catch (renderError) {
-            if (renderError.name === 'RenderingCancelledException') {
-                console.log('Renderizado cancelado por nuevo zoom');
-                return; // Salir silenciosamente si fue cancelado
-            }
-            throw renderError;
-        }
-        
-        // Agregar marca de agua después de renderizar la página
-        addWatermarkToCanvas(context, bufferWidth, bufferHeight);
-        
-        console.log(`Página ${pageNumber} renderizada con zoom ${scale} (ajustado dinámicamente a ${finalScale}) y marca de agua`);
-        
-        // Asegurar que el canvas sea visible
-        canvas.style.display = 'block';
-        
-        // No forzar dimensiones fijas, permitir que el contenedor de scroll maneje el desplazamiento
-        canvas.style.margin = '0 auto';
-        
-        // Forzar actualización del layout
-        canvas.offsetHeight; // trigger reflow
+        addWatermarkToCanvas(context, canvas.width, canvas.height);
         
     } catch (error) {
         if (error.name !== 'RenderingCancelledException') {
-            console.error('Error al renderizar página:', error);
-            throw error;
+            console.error('Error real en render:', error);
         }
-    } finally {
-        // Limpiar estado de renderizado
-        state.isRendering = false;
-        state.currentRenderTask = null;
     }
 }
 
@@ -626,33 +531,42 @@ window.setZoom = setZoom;
 
 /*
  * Evento Resize: Detecta cambios de orientación y fuerza reajuste del PDF
+ * Ignorar la barra de scroll en app.js: Busca al final de tu app.js el evento de resize. Vamos a decirle que si el cambio de tamaño es de solo 15-20 píxeles (lo que mide una barra de scroll), lo ignore por completo.
  */
 let resizeTimeout = null;
+let lastWindowWidth = window.innerWidth;
+
 window.addEventListener('resize', function() {
-    // Debounce para evitar múltiples renderizados rápidos
     if (resizeTimeout) {
         clearTimeout(resizeTimeout);
     }
     
     resizeTimeout = setTimeout(() => {
-        console.log('Cambio de tamaño detectado. Reajustando PDF...');
-        // Forzar recálculo de la escala de ajuste al ancho
-        if (state.pdfDoc && state.currentPage) {
-            // Obtener la primera página para recalcular la escala base
-            state.pdfDoc.getPage(1).then(page => {
-                const viewport = page.getViewport({ scale: 1 });
-                const newFitToWidthScale = getFitToWidthScale(viewport);
-                
-                // Si la escala base cambió significativamente, ajustar currentScale
-                if (Math.abs(newFitToWidthScale - fitToWidthScale) > 0.01) {
-                    console.log('Escala base cambiada. Ajustando currentScale.');
-                    fitToWidthScale = newFitToWidthScale;
-                    currentScale = fitToWidthScale;
-                    renderPage(state.currentPage, currentScale);
-                }
-            });
+        const currentWindowWidth = window.innerWidth;
+        
+        // LA MAGIA: Una barra de scroll mide aprox 15px. 
+        // Solo reajustamos si el cambio es mayor a 30px (ej: rotar el celular o cambiar tamaño de ventana real)
+        if (Math.abs(currentWindowWidth - lastWindowWidth) > 30) {
+            console.log('Cambio REAL de tamaño de ventana detectado. Reajustando PDF...');
+            lastWindowWidth = currentWindowWidth;
+            
+            if (state.pdfDoc && state.currentPage) {
+                state.pdfDoc.getPage(1).then(page => {
+                    const viewport = page.getViewport({ scale: 1 });
+                    const newFitToWidthScale = getFitToWidthScale(viewport);
+                    
+                    if (Math.abs(newFitToWidthScale - fitToWidthScale) > 0.01) {
+                        fitToWidthScale = newFitToWidthScale;
+                        currentScale = fitToWidthScale;
+                        renderPage(state.currentPage, currentScale);
+                    }
+                });
+            }
+        } else {
+            // Ignoramos el evento porque fue solo la barra de scroll apareciendo/desapareciendo
+            lastWindowWidth = currentWindowWidth; 
         }
-    }, 200); // 200ms de debounce
+    }, 200); 
 });
 
 /*
