@@ -463,22 +463,6 @@ body:fullscreen {
         min-height: 40vh;
     }
     
-    /* Canvas para mejor manejo en móviles */
-    #pdfCanvas {
-        max-width: 100vw;
-        max-height: calc(100vh - 160px);
-        width: 100%;
-        height: auto;
-        /* Mejorar calidad en móviles */
-        image-rendering: -webkit-optimize-contrast;
-        image-rendering: crisp-edges;
-        image-rendering: pixelated;
-        /* Evitar que el canvas se salga del contenedor */
-        box-sizing: border-box;
-        /* Asegurar que el canvas mantenga su proporción */
-        object-fit: contain;
-    }
-    
     /* Controles de zoom y navegación para móviles */
     .zoom-controls {
         flex-wrap: wrap; /* Permitir que los botones se ajusten en pantallas pequeñas */
@@ -510,10 +494,6 @@ body:fullscreen {
         .pdf-scroll-container {
             height: calc(100vh - 180px); /* Más espacio en pantallas muy pequeñas */
             min-height: 35vh;
-        }
-        
-        #pdfCanvas {
-            max-height: calc(100vh - 180px);
         }
         
         .zoom-controls {

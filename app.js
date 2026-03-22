@@ -465,11 +465,11 @@ function addWatermarkToCanvas(context, width, height) {
     let fontSize;
     
     if (isMobile) {
-        // En móviles, usar un tamaño más pequeño para no tapar el contenido
-        fontSize = Math.max(20, Math.floor(width / 25));
+        // Reducido para que se vea completo en móviles
+        fontSize = Math.max(14, Math.floor(width / 40));
     } else {
-        // En desktop, tamaño más grande para mejor visibilidad
-        fontSize = Math.max(40, Math.floor(width / 15));
+        // Reducido para desktop
+        fontSize = Math.max(24, Math.floor(width / 25));
     }
     
     const color = 'rgba(128, 128, 128, 0.3)'; // Gris semitransparente
