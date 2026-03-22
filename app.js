@@ -306,7 +306,7 @@ function updateLoadingState(isLoading, message = null) {
         elements.loadingSpinner.classList.add('hidden');
         elements.canvas.classList.remove('hidden');
         elements.statusDot.style.backgroundColor = '#4CAF50';
-        elements.statusText.textContent = message || 'Documento listo';
+        elements.statusText.textContent = message || 'Señales, prioridades ...';
     }
 }
 
@@ -585,5 +585,66 @@ setInterval(() => {
     }
 }, 1000); // Verificar cada segundo
 
+// Implementar Pinch-to-Zoom (JS)
+function setupPinchToZoom() {
+    const scrollContainer = document.querySelector('.pdf-scroll-container');
+    if (!scrollContainer) return;
+
+    let initialDistance = 0;
+    let lastScale = currentScale;
+    let isPinching = false;
+    
+    // Debounce para evitar saturación del renderizado
+    let zoomTimeout;
+    
+    scrollContainer.addEventListener('touchstart', function(e) {
+        if (e.touches.length === 2) {
+            isPinching = true;
+            initialDistance = getDistance(e.touches[0], e.touches[1]);
+            lastScale = currentScale;
+        }
+    }, { passive: false });
+
+    scrollContainer.addEventListener('touchmove', function(e) {
+        if (isPinching && e.touches.length === 2) {
+            e.preventDefault(); // Prevenir scroll durante pinch
+            
+            const currentDistance = getDistance(e.touches[0], e.touches[1]);
+            const scale = currentDistance / initialDistance;
+            
+            // Aplicar factor de escala con límites
+            const newScale = Math.max(0.2, Math.min(lastScale * scale, 3.0));
+            
+            // Limpiar timeout anterior
+            if (zoomTimeout) {
+                clearTimeout(zoomTimeout);
+            }
+            
+            // Actualizar escala con debounce muy leve (16ms para 60fps)
+            zoomTimeout = setTimeout(() => {
+                currentScale = newScale;
+                setZoom(currentScale);
+            }, 16);
+        }
+    }, { passive: false });
+
+    scrollContainer.addEventListener('touchend', function() {
+        isPinching = false;
+        if (zoomTimeout) {
+            clearTimeout(zoomTimeout);
+        }
+    });
+}
+
+// Función auxiliar para calcular distancia entre dos puntos táctiles
+function getDistance(touch1, touch2) {
+    const dx = touch2.clientX - touch1.clientX;
+    const dy = touch2.clientY - touch1.clientY;
+    return Math.sqrt(dx * dx + dy * dy);
+}
+
 // Inicializar cuando el DOM esté listo
-document.addEventListener('DOMContentLoaded', initApp);
+document.addEventListener('DOMContentLoaded', function() {
+    initApp();
+    setupPinchToZoom();
+});

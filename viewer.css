@@ -458,7 +458,7 @@ body:fullscreen {
         height: calc(100vh - 160px); /* Aumentar el espacio para header y footer */
         overflow: auto;
         overflow-x: hidden;
-        touch-action: pan-y; /* Permitir scroll vertical, bloquear horizontal */
+        /* touch-action: pan-y; eliminado para permitir pinch-to-zoom */
         /* Mejorar proporción para evitar deformación */
         min-height: 40vh;
     }
