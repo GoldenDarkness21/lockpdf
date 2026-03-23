@@ -424,24 +424,23 @@ async function renderPage(pageNumber, zoomScale = null) {
         currentScale = scale;
 
         const viewport = page.getViewport({ scale: scale });
-        const dpr = Math.min(window.devicePixelRatio || 1, 2);
-        
         const canvas = elements.canvas;
         const context = canvas.getContext('2d');
-        
-        // Ajustamos el tamaño interno (buffer)
+
+        // Resolución interna alta
+        const dpr = window.devicePixelRatio || 2;
         canvas.width = Math.floor(viewport.width * dpr);
         canvas.height = Math.floor(viewport.height * dpr);
-        
-        // Ajustamos el tamaño visual (CSS)
-        canvas.style.width = viewport.width + 'px';
-        canvas.style.height = viewport.height + 'px';
-        
-        context.scale(dpr, dpr);
-        
+
+        // ESTILO CSS: Esto evita que se vea cortado
+        canvas.style.width = "100%"; // Se adapta al ancho del móvil
+        canvas.style.maxWidth = viewport.width + "px"; // Pero no se pixela en PC
+        canvas.style.height = "auto"; 
+
         const renderContext = {
             canvasContext: context,
-            viewport: viewport
+            viewport: viewport,
+            transform: [dpr, 0, 0, dpr, 0, 0]
         };
         
         state.currentRenderTask = page.render(renderContext);
