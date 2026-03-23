@@ -533,13 +533,17 @@ window.renderPage = renderPage;
 window.setZoom = setZoom;
 
 /*
- * Evento Resize: Detecta cambios de orientación y fuerza reajuste del PDF
- * Ignorar la barra de scroll en app.js: Busca al final de tu app.js el evento de resize. Vamos a decirle que si el cambio de tamaño es de solo 15-20 píxeles (lo que mide una barra de scroll), lo ignore por completo.
+ * Evento Resize: Desactivamos el re-renderizado automático en móviles para no romper el zoom nativo
  */
 let resizeTimeout = null;
 let lastWindowWidth = window.innerWidth;
 
 window.addEventListener('resize', function() {
+    if (window.innerWidth <= 768) {
+        return; // No hacer nada en móvil, dejar que el celular maneje el zoom
+    }
+    
+    // ... resto del código de resize para PC si lo deseas mantener
     if (resizeTimeout) {
         clearTimeout(resizeTimeout);
     }
@@ -695,5 +699,5 @@ function setupScrollNavigation() {
 // Inicializar cuando el DOM esté listo
 document.addEventListener('DOMContentLoaded', function() {
     initApp();
-    setupPinchToZoom();
+    // IMPORTANTE: setupPinchToZoom() eliminada para no chocar con el zoom nativo del celular
 });
