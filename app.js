@@ -172,6 +172,9 @@ function setupControls() {
     // Los botones del header han sido eliminados para simplificar la interfaz
     // El usuario se moverá por el PDF solo mediante scroll
     
+    // Navegación con scroll optimizada para zoom nativo
+    setupScrollNavigation();
+    
     // Navegación con teclado (flechas)
     document.addEventListener('keydown', function(e) {
         // Bloquear teclas de seguridad (mantener existente)
@@ -648,6 +651,45 @@ function getDistance(touch1, touch2) {
     const dx = touch2.clientX - touch1.clientX;
     const dy = touch2.clientY - touch1.clientY;
     return Math.sqrt(dx * dx + dy * dy);
+}
+
+// Configura navegación por scroll optimizada para zoom nativo
+function setupScrollNavigation() {
+    const scrollContainer = document.querySelector('.pdf-scroll-container');
+    if (!scrollContainer) return;
+
+    let scrollTimeout;
+    let isScrolling = false;
+    
+    // Detectar scroll para navegación automática
+    scrollContainer.addEventListener('scroll', function() {
+        // Evitar múltiples eventos durante el scroll
+        if (isScrolling) return;
+        isScrolling = true;
+        
+        clearTimeout(scrollTimeout);
+        scrollTimeout = setTimeout(() => {
+            isScrolling = false;
+            
+            // Detectar posición del scroll para cambiar de página
+            const scrollTop = scrollContainer.scrollTop;
+            const scrollHeight = scrollContainer.scrollHeight;
+            const clientHeight = scrollContainer.clientHeight;
+            
+            // Si está cerca del final, avanzar página
+            if (scrollTop + clientHeight >= scrollHeight - 50) {
+                if (state.currentPage < state.totalPages) {
+                    state.currentPage++;
+                    renderPage(state.currentPage);
+                }
+            }
+            // Si está cerca del inicio, retroceder página
+            else if (scrollTop <= 50 && state.currentPage > 1) {
+                state.currentPage--;
+                renderPage(state.currentPage);
+            }
+        }, 100); // Debounce de 100ms
+    });
 }
 
 // Inicializar cuando el DOM esté listo

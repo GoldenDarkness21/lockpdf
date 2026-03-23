@@ -171,6 +171,9 @@ body {
     overflow-x: auto !important;
     display: block !important;
     background-color: #ebebeb;
+    /* Optimización para zoom nativo del navegador */
+    touch-action: pinch-zoom; /* Permitir pinch-to-zoom nativo */
+    -webkit-overflow-scrolling: touch; /* Mejorar scroll en iOS */
 }
 
 .canvas-wrapper {
