@@ -125,7 +125,13 @@ body {
 
 /* Contenedor de scroll para el PDF */
 .pdf-scroll-container {
-    width: 100%;
+    width: 100% !important;
+    display: flex !important;
+    flex-direction: column;
+    align-items: center; /* Centra el PDF horizontalmente */
+    justify-content: flex-start;
+    padding: 10px 0 !important; /* Un poco de aire arriba y abajo */
+    overflow-x: hidden !important; /* PROHIBIDO el scroll horizontal aquí */
     height: auto; 
     min-height: 100vh;
     overflow: visible !important; /* Importante para que el zoom nativo no se corte */
@@ -143,8 +149,12 @@ body {
 
 /* Canvas del PDF */
 #pdfCanvas {
-    max-width: 100%; /* El canvas no debe pelear con el zoom del móvil */
+    /* Eliminamos cualquier ancho fijo residual */
+    max-width: 95% !important; /* No permitas que toque los bordes al inicio */
+    width: auto !important;
     height: auto !important;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.15); /* Se ve más profesional */
+    border-radius: 4px;
 }
 
 /* Overlay de seguridad - capa transparente para bloquear interacciones */

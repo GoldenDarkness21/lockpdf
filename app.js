@@ -44,8 +44,8 @@ function getFitToWidthScale(viewport) {
     lastContainerWidth = containerWidth;
     
     // Matemática de Seguridad: Restar píxeles fijos al área disponible antes de dividir
-    const safeWidth = containerWidth - 40;
-    const safeHeight = containerHeight - 40;
+    const safeWidth = containerWidth - 60; 
+    const safeHeight = containerHeight - 80; // Más margen vertical por el header/footer
     
     // Calcular escala para ajustar al contenedor manteniendo la proporción
     const scaleX = safeWidth / viewport.width;
@@ -434,8 +434,8 @@ async function renderPage(pageNumber, zoomScale = null) {
 
         // ESTILO CSS: Esto evita que se vea cortado
         canvas.style.width = "100%"; // Se adapta al ancho del móvil
-        canvas.style.maxWidth = viewport.width + "px"; // Pero no se pixela en PC
-        canvas.style.height = "auto"; 
+        canvas.style.maxWidth = "95vw"; // Asegura que nunca sea más ancho que la pantalla del celular
+        canvas.style.height = "auto";
 
         const renderContext = {
             canvasContext: context,
